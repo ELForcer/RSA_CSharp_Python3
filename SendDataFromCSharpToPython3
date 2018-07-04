@@ -1,0 +1,13 @@
+            string Base64 = NSClassText.Base64.base64encodeToString("Login=" + Login + "|PasswordHash=" + PasswordHash);
+            Base64 = NSClassText.RSA.PEM.RsaEncryptWithPublic(Base64, "Public");
+
+            if (NSClassNet.HTTP.GET(@"https://" + NSClassDataBase.SQlite.GetVariableFromLocalBase("ServerPython") + "/API" + Data + "&VARS="+ Uri.EscapeDataString(Base64), ref R) == true)
+            {
+                  string[] Result = R.Split('|');
+                Answer = Result[1];
+                if (Result[0] == "OK")
+                { return true; }
+                else
+                { return false; }
+
+            }
