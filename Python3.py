@@ -1,79 +1,161 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 import base64 
 import pymssql #работа с MS SQL
 import html #Unescape
 import importlib.util
 import os
+import datetime #работа с датой и временем
 
 #Криптография
-from Crypto import Random
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
+from Crypto import Random
+from base64 import b64decode
+#spec = importlib.util.spec_from_file_location("module.name", "cgi-bin/TestAPI.py")
+#spec = importlib.util.spec_from_file_location("module.name", "TestAPI.py")
+#MyAPI = importlib.util.module_from_spec(spec)
+#spec.loader.exec_module(MyAPI)
 
 
-spec = importlib.util.spec_from_file_location("module.name", "cgi-bin/TestAPI.py")
-MyAPI = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(MyAPI)
+
+####
+##Создаем ключи для станции
+####
+def CreateRSAKeys(IDStation):
+
+    
+    # Создаем ключи для филиала
+    random_generator = Random.new().read
+    privatekey = RSA.generate(2048, random_generator)
+    #f = open('alisaprivatekey.txt','wb')
+    
+    #Отправляем его станции для получения
+    PrivKey= privatekey.exportKey('PEM') 
+    #f.write(bytes(privatekey.exportKey('PEM'))); f.close()
+
+
+    #Сохраняем себе открытый ключ
+    publickey = privatekey.publickey()
+    f = open("Keys/C_"+IDStation+".pem",'wb')
+    f.write(bytes(publickey.exportKey('PEM'))); f.close()
+
+    #Создаем ключи для сервера
+    random_generator = Random.new().read
+    privatekey = RSA.generate(2048, random_generator)
+    
+    #Сохраняем его себе 
+    f = open("Keys/S_"+IDStation+".pem",'wb')
+    f.write(bytes(privatekey.exportKey('PEM'))); f.close()
+    
+    publickey = privatekey.publickey()
+    #f = open('bobpublickey.txt','wb')
+    PubKey= publickey.exportKey('PEM')
+    #f.write(bytes(publickey.exportKey('PEM'))); f.close()
+    return PrivKey.decode("utf-8"),PubKey.decode("utf-8")
+
+
+def Login(MVars,CurStationID):
+    Login=""
+    PasswordHash=""
+    
+    #Расшифровка 
+    for I in list(MVars):
+        M=[]
+        M= str(I).split('=')
+        #CurHTML+=str(M)
+        if (M[0]=="Login"): Login= M[1]
+        if (M[0]=="PasswordHash"): PasswordHash= M[1]
+    
+    #Защита от пустого значения
+    if (Login=="" or PasswordHash==""): return "WARNING|Пустое значение логина или пароля"
+    
+    Where="Login='"+Login+"' and PasswordHash='"+PasswordHash+"'"    
+    UserID = MyAPI.GetValueByWhere("Dictionary","Users","UserID",Where)
+    CurSessionID = MyAPI.CreateSession(UserID,"",CurStationID)
+    if (UserID=="" or UserID=="0"): return "ERROR_LOGIN|Неверный логин или пароль" 
+    return "OK|"+CurSessionID
+
 
 def Main(CurSessionID,Action,Vars,CurStationID):
-    Vars=bytes(base64.standard_b64decode(Vars))
-    print (str(len(Vars)))
     MVars=""
     CurHTML=""
     UserID="0"
+    if (CurStationID==None): CurStationID=""
     try:
         if (CurSessionID!=""):
             S=MyAPI.CheckSession(CurSessionID)
             UserID=S[2]
-            CurStationID=S[3]
+            CurStationID=S[4]
     except:
         
         Answer= "ERROR_DENIDED|Не удалось получить ваш ID по данному идентификатору сессии для проверки доступа!|"+str(S)
         MyAPI.API_SendLog( UserID,  "E",  "",Answer)
         return Answer
         
-    
-    #try:
-    if (CurStationID!=""):
-        if (os.path.isfile("Keys/S_"+CurStationID+".pem") ==False): return "ERROR|Не обнаружены ключи станции! Все операции запрещены!"
-        with open("Keys/S_"+CurStationID+".pem",'r') as fp:
-            private_key = RSA.importKey (fp.read())
+
+    try:
+        if (CurStationID!="" and CurStationID!="None" ):
+            if (os.path.isfile("Keys/S_"+CurStationID+".pem") ==False): return "ERROR|Не обнаружены ключи станции "+CurStationID+"! Все операции через сервер с этой станции запрещены!"
+            #with open("Keys/S_"+CurStationID+".pem",'rb') as fp:
             
-        fp.close()
-        
-        
-        
+            #    private_key = RSA.PrivateKey.load_pkcs1(open("Keys/S_"+CurStationID+".pem").read())
+                
+            #fp.close()
+            
+            private_key_string = open("Keys/S_"+CurStationID+".pem","r").read()
+            private_key = RSA.importKey(private_key_string)
 
 
-        #print('enc_session_key:',enc_session_key.encode('hex'))
+    #        enc_session_key, nonce, tag, ciphertext = [ fobj.read(x) 
+    #            for x in (private_key.size_in_bytes(), 
+    #            16, 16, -1) ]
 
-        # Decrypt the session key with the private RSA key
-        #cipher_rsa = PKCS1_OAEP.new(private_key)
-        
+            #cipher_rsa = PKCS1_OAEP.new(private_key)
+            #session_key = cipher_rsa.decrypt(enc_session_key)
+
+            #cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+            #data = cipher_aes.decrypt_and_verify(ciphertext, tag)
 
 
-        #cipher = PKCS1_OAEP.new(private_key.publickey())
-        cipher = PKCS1_OAEP.new(private_key)
 
-        full_packet_as_string = Vars
-        enc_session_key = full_packet_as_string[: private_key.size()]
-        nonce = full_packet_as_string[private_key.size(): private_key.size() + 16]
-        tag = full_packet_as_string[private_key.size() + 16: private_key.size() + 32]
-        ciphertext = full_packet_as_string[private_key.size() + 32:]
+            #CurVars=str(base64.standard_b64decode(Vars).decode("utf-8"))
+            #print (private_key_string)
+            #MVars = private_key.decrypt(Vars) #RSA.decrypt(Vars, private_key)
+            
+            
+                
+            #rsakey = PKCS1_OAEP.new(private_key) 
 
-        #print (private_key.exportKey())
-        #E=cipher.encrypt(Vars)
-        
-        
-        #f = open("Test.txt",'wb')
-        #f.write(bytes(E)); f.close()
-    
-        MVars = cipher.decrypt(Vars).decode("utf-8") #RSA.decrypt(Vars, private_key)
-        
-Vars= "QJdvQ2VsPMg6Py//5bNLXZ+arxy5Ee7adQs1XLCLtcSNWBuApimef93lYFK7lBftv99WDL2nS4AKjTrJTjl+oiI9TEv0/eBWE7cVm+XLmK5VNSYZ4Xbn78suTp9S1K1XDyRozuO+hzkk87XTt2pK15Tgickxd8oonUJI/TUurmYXRaujjvOXrOg/THZ2HVr/Ei7yWAaCdSHpmwmMu/oSslO3t3QJh60BLn1hUZuULVQrmTByOcdWTf8A1RloM4FDYgANb+y8yJEfml2ItgySJXKgprPZJ9tVWRELwfcZoXETUTRXIvRQc8hwWAwSBkO1V9I2XSL2iLL9cNGosRFiMA==" 
-#Vars = b'123456789'
-Main('','login',Vars,'ce3a1571-f74b-477d-87b8-0308e9b4f700')
- 
+            decrypted = private_key.decrypt(b64decode(Vars))
+            
+            
+            f = open("TestD.txt",'wb')
+            f.write(bytes(decrypted)); f.close()
+
+
+            # шифруем crypto = rsa.encrypt(message, pubkey)
+            #print (decrypted.decode("utf-8"))
+            #Пока не поддерживается шифрование
+            MVars=str(base64.standard_b64decode((decrypted)).decode("utf-8")).split('|')
+        else:
+            MVars=str(base64.standard_b64decode(html.unescape(Vars)).decode("utf-8")).split('|')
+    except Exception as E:   
+        Answer = "ERROR_VARS|Не удалось раскодировать переменные! Возможно, не совпадают ключи шифрования! "+str(E)+"|"+Vars
+    #MyAPI.API_SendLog( UserID,  "E",  "",Answer.replace("'",""))
+        return Answer 
+
+    if (Action=="login"):
+        Answer=Login(MVars,CurStationID)
+        MyAPI.API_SendLog( UserID,  "O",  "",Answer.replace("'",""))
+        return Answer
+   
+    Answer="ERROR|Неизвестное действие!"
+    MyAPI.API_SendLog( UserID,  "E",  "",Answer.replace("'",""))
+    return Answer 
+
+
+Vars="Q28UzOAfrnMYMxmgAEGCzb7Nvum2kIFV7VtsrGi/+w3FwGe36JuvDpM1eTjfzhZpdP869sZ5UhmUak//A3a8KUc9Ij75YMvmaKNGCqy5zHunzgVUvODa2DC5AcTr4TWP50hdA1B+VRldFFCwseqGRhQ/jPNigkWKXalYFo/dCt0TCAgcoBCoVxptu3i/D97zMZUTlSI0oiG2okNDDz+SXhz5eUDGtrGF5gQozulPOeJ+B+OJzG3QYVi0wNwaV3r0PpIlzCiv6kSRVBO12f/Y/Or4jh5pgACciS6ZuX3MEvxZvA2VKClW3X0gPVlr2c6dJpCSENBoe1GO+66FGJhkoQ=="
+CurStationID='5e954065-7434-4ed6-ab8c-884d1e4b99e8'
+print (Main('','login',Vars,CurStationID))
