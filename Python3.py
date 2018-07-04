@@ -108,26 +108,6 @@ def Main(CurSessionID,Action,Vars,CurStationID):
             private_key = RSA.importKey(private_key_string)
 
 
-    #        enc_session_key, nonce, tag, ciphertext = [ fobj.read(x) 
-    #            for x in (private_key.size_in_bytes(), 
-    #            16, 16, -1) ]
-
-            #cipher_rsa = PKCS1_OAEP.new(private_key)
-            #session_key = cipher_rsa.decrypt(enc_session_key)
-
-            #cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
-            #data = cipher_aes.decrypt_and_verify(ciphertext, tag)
-
-
-
-            #CurVars=str(base64.standard_b64decode(Vars).decode("utf-8"))
-            #print (private_key_string)
-            #MVars = private_key.decrypt(Vars) #RSA.decrypt(Vars, private_key)
-            
-            
-                
-            #rsakey = PKCS1_OAEP.new(private_key) 
-
             decrypted = private_key.decrypt(b64decode(Vars))
             
             
@@ -135,8 +115,6 @@ def Main(CurSessionID,Action,Vars,CurStationID):
             f.write(bytes(decrypted)); f.close()
 
 
-            # шифруем crypto = rsa.encrypt(message, pubkey)
-            #print (decrypted.decode("utf-8"))
             #Пока не поддерживается шифрование
             MVars=str(base64.standard_b64decode((decrypted)).decode("utf-8")).split('|')
         else:
